@@ -29,7 +29,7 @@ class Incidence_Geometery (Point : Type) (Line : Set (Set Point)) where
   I1 : ∀p₁ p₂:Point, p₁≠p₂ → ∃!L, Line L ∧ p₁∈L ∧ p₂∈L
   I2 : ∀L, Line L → ∃p₁ p₂:Point, p₁≠p₂ ∧ p₁∈L ∧ p₂∈L
   I3 : let Colinear (p₁ p₂ p₃:Point) : Prop := ∃!L, Line L ∧ p₁∈L ∧ p₂∈L ∧ p₃∈L
-    ∃p₁ p₂ p₃:Point, ¬ Colinear p₁ p₂ p₃
+    ∃p₁ p₂ p₃:Point, p₁≠p₂ ∧ p₂≠p₃ ∧ p₁≠p₃ ∧ ¬ Colinear p₁ p₂ p₃
 
 --Originally this development postulated `Point`, `Line`, `Between` and the
 --Hilbert axioms `I1`-`I3`, `B1`-`B4` as global Lean `axiom`s. We instead
@@ -47,8 +47,16 @@ class HilbertGeo (Point : Type) where
   I1 : ∀p₁ p₂:Point, p₁≠p₂ → ∃!L, IsLine L ∧ p₁∈L ∧ p₂∈L
   --(I2) Every line contains two distinct points.
   I2 : ∀L, IsLine L → ∃p₁ p₂:Point, p₁≠p₂ ∧ p₁∈L ∧ p₂∈L
-  --(I3) There exists three noncolinear points.
-  I3 : ∃p₁ p₂ p₃:Point, ¬ ∃L, IsLine L ∧ p₁∈L ∧ p₂∈L ∧ p₃∈L
+  --(I3) There exist three *distinct* noncolinear points.
+  --Hilbert's global convention ("All points, lines and planes are distinct
+  --unless otherwise stated") bakes the distinctness of the three witnesses
+  --directly into the quantifiers of I3.  Without it, the degenerate triple
+  --`(p,p,p)` would vacuously witness noncolinearity in a one-point universe,
+  --letting the whole geometry collapse to a single point.  With distinctness
+  --required, a one-point universe fails I3, and the existence of a line
+  --becomes derivable (see `SudI3`).
+  I3 : ∃p₁ p₂ p₃:Point, p₁≠p₂ ∧ p₂≠p₃ ∧ p₁≠p₃ ∧
+    ¬ ∃L, IsLine L ∧ p₁∈L ∧ p₂∈L ∧ p₃∈L
   --(B1) If `A⋆B⋆C` then `A,B,C` are distinct points which
   -- lie on the same line and `C⋆B⋆A`.
   B1 : ∀A B C:Point, Btw A B C → A≠B ∧ A≠C ∧ B≠C ∧
@@ -131,20 +139,31 @@ lemma SudI2 (l: Set Point) (_ :Line l) : ∃p₁ p₂ p₃:Point,
   --So we must find a third not on the line.
   --Commands ``by_contra h`` and ``push_neg at h`` are useful.
   rename_i h;
-  obtain ⟨ p₁, p₂, hp₁p₂ ⟩ := ‹HilbertGeo Point›.I2 l h;
-  obtain ⟨ p₃, hp₃ ⟩ := ‹HilbertGeo Point›.I3;
-  by_cases hp₃l : p₃ ∈ l;
-  · grind;
-  · exact ⟨ p₁, p₂, p₃, hp₃l, hp₁p₂.2.2, hp₁p₂.2.1, hp₁p₂.1, by aesop ⟩
+  obtain ⟨ p₁, p₂, hp₁p₂, hp₁, hp₂ ⟩ := ‹HilbertGeo Point›.I2 l h;
+  obtain ⟨ a, b, c, _, _, _, hnc ⟩ := ‹HilbertGeo Point›.I3;
+  --At least one of the three noncolinear points `a,b,c` lies off `l`,
+  --otherwise all three would lie on the line `l`, contradicting `I3`.
+  by_cases ha : a ∈ l
+  · by_cases hb : b ∈ l
+    · by_cases hc : c ∈ l
+      · exact absurd ⟨l, h, ha, hb, hc⟩ hnc
+      · exact ⟨ p₁, p₂, c, hc, hp₂, hp₁, hp₁p₂,
+          fun e => hc (e ▸ hp₁), fun e => hc (e ▸ hp₂) ⟩
+    · exact ⟨ p₁, p₂, b, hb, hp₂, hp₁, hp₁p₂,
+        fun e => hb (e ▸ hp₁), fun e => hb (e ▸ hp₂) ⟩
+  · exact ⟨ p₁, p₂, a, ha, hp₂, hp₁, hp₁p₂,
+      fun e => ha (e ▸ hp₁), fun e => ha (e ▸ hp₂) ⟩
 
 --There exists a line.
---NOTE: As stated this does *not* follow from the Hilbert axioms above: the
---one-point geometry with no lines (`Point` a singleton, `IsLine = ∅`,
---`Btw` always false) satisfies `I1`-`I3` and `B1`-`B4` vacuously, yet has
---no line, since `I3` is witnessed by the degenerate triple `(p,p,p)`.
---Hence this lemma is left as `sorry`; it is unprovable from the axioms.
+--With the corrected `I3` (which, following Hilbert's global distinctness
+--convention, requires the three noncolinear points to be *distinct*), the
+--one-point geometry no longer satisfies the axioms: a single point cannot
+--supply three distinct witnesses for `I3`.  Concretely, `I3` hands us two
+--distinct points `p₁ ≠ p₂`, and `I1` produces the unique line through them.
 lemma SudI3 : ∃l:Set Point, (Line : Set (Set Point)) l := by
-  sorry
+  obtain ⟨p₁, p₂, _, hp₁p₂, _, _, _⟩ := ‹HilbertGeo Point›.I3
+  obtain ⟨L, ⟨hL, _, _⟩, _⟩ := I1 p₁ p₂ hp₁p₂
+  exact ⟨L, hL⟩
 
 
 --Sec 7. Axioms of Betweenness
